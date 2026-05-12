@@ -16,7 +16,7 @@ This app is intended for a person who wants to track their health metrics.
     - ability to edit the amount of food ingested in a log entry after it has been made, with the same unit picker (g, oz, lbs, ml, cups) available during logging
 - Automatically import exercise data from Apple Health and Google Fit
     - individual workout activities (e.g. cycling 20 min, walking 10 min) are shown in a dedicated Exercise section below the daily meals log
-- Log their weight via a quick-access button, which automatically syncs to Apple Health
+- Log their weight via a quick-access button, which automatically syncs to Apple Health (iOS) and Health Connect (Android)
 - Change the weight unit preference between kg and lbs (all weight inputs and displays adapt, including the weight log dialog, profile/goals screen, and weight chart)
 - Set a target weight and create a weight loss/gain plan
     - they can define the loss/gain rate per week
@@ -44,6 +44,6 @@ This app is intended for a person who wants to track their health metrics.
 # Implementation Details
 - The app will be implemented as a mobile app using Flutter
 - The app will use SQLite as the database
-- The app will use Apple HealthKit for iOS and Google Fit for Android for health data
+- The app will use Apple HealthKit for iOS and Health Connect for Android for health data
 - The app will use FoodData Central API for food data
 - 
