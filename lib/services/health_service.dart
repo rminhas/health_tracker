@@ -33,6 +33,7 @@ class HealthService {
   bool _isConfigured = false;
   HealthStatus _status = HealthStatus.unknown;
   String lastError = '';
+  Future<bool>? _inFlightConnect;
 
   HealthStatus get status => _status;
 
@@ -69,7 +70,16 @@ class HealthService {
   /// model hides that). The caller should follow up by attempting to read
   /// data and treating an empty result as "either no data, or denied" — and
   /// surface that to the user.
-  Future<bool> connect() async {
+  Future<bool> connect() {
+    // Coalesce concurrent callers onto one in-flight Future. Without this, the
+    // dashboard's parallel _loadHealthData calls each invoke connect(), and
+    // Android throws "Can request only one set of permissions at a time",
+    // which prevents the Health Connect dialog from ever appearing.
+    return _inFlightConnect ??= _connect()
+      ..whenComplete(() => _inFlightConnect = null);
+  }
+
+  Future<bool> _connect() async {
     try {
       await _configure();
 
