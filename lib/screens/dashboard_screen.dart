@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../models/food_log.dart';
 import '../models/weight_unit.dart';
 import '../models/workout_log.dart';
+import '../models/food_unit.dart';
+import '../models/meal_type.dart';
 import '../providers/food_log_provider.dart';
 import '../providers/profile_provider.dart';
 import '../services/health_service.dart';
@@ -114,11 +116,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                 const SizedBox(height: 16),
                 _buildSectionHeader("Today's Log"),
                 const SizedBox(height: 6),
-                _buildSectionLabel(context, Icons.restaurant_menu, 'Meals'),
                 if (todayLogs.isEmpty)
                   _buildEmptyState('No food logged today.')
                 else
-                  ...todayLogs.map((log) => _buildMealCard(context, log)),
+                  ..._buildGroupedMeals(context, todayLogs),
                 const SizedBox(height: 8),
                 if (_healthDataAvailable) ...[
                   _buildSectionLabel(
@@ -201,6 +202,26 @@ class _DashboardScreenState extends State<DashboardScreen>
               fontSize: 13,
               color: Theme.of(context).colorScheme.onSurfaceVariant)),
     );
+  }
+
+  // ── Grouped meals ────────────────────────────────────────────────────────
+
+  List<Widget> _buildGroupedMeals(BuildContext context, List<FoodLog> logs) {
+    final widgets = <Widget>[];
+    for (final type in MealType.values) {
+      final group = logs.where((l) => l.mealType == type).toList();
+      if (group.isEmpty) continue;
+      widgets.add(_buildSectionLabel(context, type.icon, type.label));
+      widgets.addAll(group.map((l) => _buildMealCard(context, l)));
+      widgets.add(const SizedBox(height: 4));
+    }
+    // Legacy entries logged before meal categories were introduced.
+    final untyped = logs.where((l) => l.mealType == null).toList();
+    if (untyped.isNotEmpty) {
+      widgets.add(_buildSectionLabel(context, Icons.restaurant_menu, 'Other'));
+      widgets.addAll(untyped.map((l) => _buildMealCard(context, l)));
+    }
+    return widgets;
   }
 
   // ── Meal card ────────────────────────────────────────────────────────────
@@ -323,8 +344,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             ElevatedButton(
               onPressed: () {
                 final kg = unit.toKg(displayValue);
-                if (kg > 0) profileProvider.logWeight(kg);
                 Navigator.pop(dialogContext);
+                if (kg > 0) profileProvider.logWeight(kg);
               },
               child: const Text('Save'),
             ),
@@ -335,49 +356,95 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   void _editLog(BuildContext context, FoodLog log) {
+    final amountCtrl =
+        TextEditingController(text: log.amount.toStringAsFixed(1));
+    var selectedUnit = FoodUnit.g;
+
     showDialog(
       context: context,
-      builder: (dialogContext) {
-        double newAmount = log.amount;
-        return AlertDialog(
-          title: Text('Edit ${log.name}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Enter new amount in grams:'),
-              TextFormField(
-                initialValue: log.amount.toStringAsFixed(1),
-                keyboardType: TextInputType.number,
-                autofocus: true,
-                onChanged: (val) {
-                  newAmount = double.tryParse(val) ?? 0.0;
-                },
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final amt = double.tryParse(amountCtrl.text) ?? 0.0;
+          final newGrams = amt * selectedUnit.toGrams;
+          final valid = newGrams > 0;
+
+          return AlertDialog(
+            title: Text('Edit ${log.name}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: amountCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Amount (${selectedUnit.label})',
+                          border: const OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        autofocus: true,
+                        onChanged: (_) => setDialogState(() {}),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    DropdownButton<FoodUnit>(
+                      value: selectedUnit,
+                      underline: const SizedBox(),
+                      items: FoodUnit.values
+                          .map((u) => DropdownMenuItem(
+                                value: u,
+                                child: Text(u.label),
+                              ))
+                          .toList(),
+                      onChanged: (u) {
+                        if (u != null) {
+                          setDialogState(() => selectedUnit = u);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                if (selectedUnit.isVolume) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Volume units assume density ≈ 1 g/ml (accurate for liquids).',
+                    style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                          fontStyle: FontStyle.italic,
+                        ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: valid
+                    ? () {
+                        final ratio =
+                            log.amount > 0 ? newGrams / log.amount : 1.0;
+                        final provider = context.read<FoodLogProvider>();
+                        final updatedLog = log.copyWith(
+                          amount: newGrams,
+                          calories: (log.calories * ratio).round(),
+                          protein: log.protein * ratio,
+                          carbs: log.carbs * ratio,
+                          fat: log.fat * ratio,
+                        );
+                        Navigator.pop(dialogContext);
+                        provider.updateLog(updatedLog);
+                      }
+                    : null,
+                child: const Text('Save'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () {
-                if (newAmount <= 0) return;
-                final ratio = log.amount > 0 ? newAmount / log.amount : 1.0;
-                context.read<FoodLogProvider>().updateLog(log.copyWith(
-                      amount: newAmount,
-                      calories: (log.calories * ratio).round(),
-                      protein: log.protein * ratio,
-                      carbs: log.carbs * ratio,
-                      fat: log.fat * ratio,
-                    ));
-                Navigator.pop(dialogContext);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
-    );
+          );
+        },
+      ),
+    ).whenComplete(amountCtrl.dispose);
   }
 
   // ── Health connect banner ────────────────────────────────────────────────
@@ -439,23 +506,33 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildSummaryCard(BuildContext context, FoodLogProvider provider,
       int netCalories, int targetCalories) {
-    final difference = targetCalories - netCalories;
-    final isOver = difference < 0;
+    final consumed = provider.totalCalories;
+    final burned = consumed - netCalories; // calories burned via exercise
+    final remaining = targetCalories - netCalories;
+    final isOver = remaining < 0;
+    final hasTarget = targetCalories > 0;
+    // Use target + burned as the budget so exercise calories extend the ring.
+    final effectiveBudget = targetCalories + burned;
+    final progress = hasTarget && effectiveBudget > 0
+        ? (consumed / effectiveBudget).clamp(0.0, 1.0)
+        : 0.0;
+
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final gradientStart = isDark
         ? Color.alphaBlend(
             Colors.teal.withValues(alpha: 0.18), theme.colorScheme.surface)
         : Colors.teal.shade50;
-    final gradientEnd =
-        isDark ? theme.colorScheme.surface : Colors.white;
+    final gradientEnd = isDark ? theme.colorScheme.surface : Colors.white;
     final headingColor = theme.colorScheme.onSurface;
     final mutedColor = theme.colorScheme.onSurfaceVariant;
+    final ringColor = isOver
+        ? theme.colorScheme.error
+        : (isDark ? Colors.greenAccent : Colors.green.shade700);
 
     return Card(
       elevation: 4,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
@@ -473,45 +550,55 @@ class _DashboardScreenState extends State<DashboardScreen>
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: headingColor)),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+            const SizedBox(height: 20),
+            // Calorie progress ring with label below.
+            Column(
               children: [
-                _buildMacroStat('Consumed', '${provider.totalCalories}',
-                    'kcal', Colors.orange,
-                    labelColor: mutedColor),
-                _buildMacroStat(
-                  'Burned',
-                  _healthDataAvailable ? '$_caloriesBurned' : '—',
-                  'kcal',
-                  Colors.green,
-                  labelColor: mutedColor,
+                SizedBox(
+                  width: 130,
+                  height: 130,
+                  child: CircularProgressIndicator(
+                    value: progress,
+                    strokeWidth: 12,
+                    backgroundColor: mutedColor.withValues(alpha: 0.15),
+                    valueColor: AlwaysStoppedAnimation(ringColor),
+                  ),
                 ),
+                const SizedBox(height: 10),
+                Text('$consumed kcal consumed',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: headingColor)),
               ],
             ),
-            const SizedBox(height: 20),
-            const Divider(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+            // Compact stats below the ring.
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
+                if (_healthDataAvailable)
+                  _buildMacroStat('Burned', '$_caloriesBurned', 'kcal',
+                      Colors.green,
+                      labelColor: mutedColor, valueFontSize: 18),
                 _buildMacroStat(
                   'Remaining',
-                  '$difference',
-                  'kcal',
-                  isOver
-                      ? theme.colorScheme.error
-                      : (isDark
-                          ? Colors.greenAccent
-                          : Colors.green.shade700),
+                  hasTarget ? '$remaining' : '—',
+                  hasTarget ? 'kcal' : '',
+                  ringColor,
                   labelColor: mutedColor,
+                  valueFontSize: 18,
                 ),
-                _buildMacroStat('Target', '$targetCalories', 'kcal',
+                _buildMacroStat(
+                    'Target',
+                    hasTarget ? '$targetCalories' : 'Not set',
+                    hasTarget ? 'kcal' : '',
                     mutedColor,
-                    labelColor: mutedColor),
+                    labelColor: mutedColor,
+                    valueFontSize: 18),
               ],
             ),
-            const SizedBox(height: 20),
+            const Divider(height: 28),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -521,8 +608,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                 _buildMacroStat('Carbs',
                     provider.totalCarbs.toStringAsFixed(1), 'g', Colors.blue,
                     labelColor: mutedColor),
-                _buildMacroStat('Fat', provider.totalFat.toStringAsFixed(1),
-                    'g', Colors.amber,
+                _buildMacroStat('Fat',
+                    provider.totalFat.toStringAsFixed(1), 'g', Colors.amber,
                     labelColor: mutedColor),
               ],
             ),
@@ -533,12 +620,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _buildMacroStat(String label, String value, String unit, Color color,
-      {Color? labelColor}) {
+      {Color? labelColor, double valueFontSize = 24}) {
     return Column(
       children: [
         Text(label,
-            style:
-                TextStyle(fontSize: 14, color: labelColor ?? Colors.grey)),
+            style: TextStyle(fontSize: 14, color: labelColor ?? Colors.grey)),
         const SizedBox(height: 4),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -547,7 +633,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           children: [
             Text(value,
                 style: TextStyle(
-                    fontSize: 24,
+                    fontSize: valueFontSize,
                     fontWeight: FontWeight.bold,
                     color: color)),
             const SizedBox(width: 2),

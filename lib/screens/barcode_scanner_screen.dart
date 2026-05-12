@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../utils/barcode_utils.dart';
 
 class BarcodeScannerScreen extends StatefulWidget {
   const BarcodeScannerScreen({super.key});
@@ -31,6 +32,9 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     if (_isScanned) return;
     final barcode = capture.barcodes.firstOrNull?.rawValue;
     if (barcode == null) return;
+    // Silently discard reads with an invalid check digit — keeps scanning.
+    // Note: ~10 % of corrupted reads will coincidentally pass this test.
+    if (!BarcodeUtils.hasValidCheckDigit(barcode)) return;
     setState(() => _isScanned = true);
     Navigator.pop(context, barcode);
   }

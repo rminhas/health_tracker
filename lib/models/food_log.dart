@@ -1,3 +1,5 @@
+import 'meal_type.dart';
+
 class FoodLog {
   final int? id;
   final String name;
@@ -7,6 +9,7 @@ class FoodLog {
   final double fat;
   final DateTime date;
   final double amount;
+  final MealType? mealType;
 
   FoodLog({
     this.id,
@@ -17,10 +20,14 @@ class FoodLog {
     required this.fat,
     required this.date,
     this.amount = 100.0,
+    this.mealType,
   });
 
+  // _Unset sentinel lets copyWith distinguish "pass null" from "omit argument".
+  static const Object _unset = Object();
+
   FoodLog copyWith({
-    int? id,
+    Object? id = _unset,
     String? name,
     int? calories,
     double? protein,
@@ -28,9 +35,10 @@ class FoodLog {
     double? fat,
     DateTime? date,
     double? amount,
+    MealType? mealType,
   }) =>
       FoodLog(
-        id: id ?? this.id,
+        id: id == _unset ? this.id : id as int?,
         name: name ?? this.name,
         calories: calories ?? this.calories,
         protein: protein ?? this.protein,
@@ -38,6 +46,7 @@ class FoodLog {
         fat: fat ?? this.fat,
         date: date ?? this.date,
         amount: amount ?? this.amount,
+        mealType: mealType ?? this.mealType,
       );
 
   Map<String, dynamic> toJson() => {
@@ -49,6 +58,7 @@ class FoodLog {
         'fat': fat,
         'date': date.toIso8601String(),
         'amount': amount,
+        'meal_type': mealType?.name,
       };
 
   static FoodLog fromJson(Map<String, dynamic> json) => FoodLog(
@@ -60,5 +70,6 @@ class FoodLog {
         fat: json['fat'] as double,
         date: DateTime.parse(json['date'] as String),
         amount: (json['amount'] as num?)?.toDouble() ?? 100.0,
+        mealType: MealType.fromString(json['meal_type'] as String?),
       );
 }

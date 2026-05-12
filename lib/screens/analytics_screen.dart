@@ -21,7 +21,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   bool _isLoading = true;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  CalendarFormat _calendarFormat = CalendarFormat.month;
+  CalendarFormat _calendarFormat = CalendarFormat.week;
 
   @override
   void initState() {
@@ -103,6 +103,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           _selectedDay = selectedDay;
           _focusedDay = focusedDay;
         });
+        _showDayDetail(context, selectedDay);
       },
       onFormatChanged: (format) {
         if (_calendarFormat != format) {
@@ -123,6 +124,101 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       ),
     );
   }
+
+  void _showDayDetail(BuildContext context, DateTime day) {
+    final logs = context.read<FoodLogProvider>().logsForDay(day);
+    final totalCals = logs.fold(0, (sum, l) => sum + l.calories);
+
+    final dayLabel =
+        '${_weekdayName(day.weekday)}, ${_monthName(day.month)} ${day.day}';
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: Theme.of(ctx).colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text(dayLabel,
+                style: Theme.of(ctx)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            if (logs.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Text('No food logged on this day.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
+              )
+            else ...[
+              Text('$totalCals kcal total',
+                  style: TextStyle(
+                      color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                      fontSize: 13)),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: logs.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final log = logs[i];
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading:
+                          const Icon(Icons.restaurant_menu, size: 18),
+                      title: Text(log.name,
+                          style: const TextStyle(fontSize: 13)),
+                      subtitle: Text(
+                          '${log.amount.toStringAsFixed(0)} g  ·  '
+                          'P ${log.protein.toStringAsFixed(1)} g  ·  '
+                          'C ${log.carbs.toStringAsFixed(1)} g  ·  '
+                          'F ${log.fat.toStringAsFixed(1)} g',
+                          style: const TextStyle(fontSize: 11)),
+                      trailing: Text('${log.calories} kcal',
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600)),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _weekdayName(int weekday) => const [
+        '', 'Monday', 'Tuesday', 'Wednesday',
+        'Thursday', 'Friday', 'Saturday', 'Sunday'
+      ][weekday];
+
+  static String _monthName(int month) => const [
+        '', 'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ][month];
 
   Widget _buildWeightChart(ProfileProvider profileProvider) {
     if (_weightLogs.isEmpty) {

@@ -77,13 +77,7 @@ class _ProfileGoalsScreenState extends State<ProfileGoalsScreen> {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
       final provider = context.read<ProfileProvider>();
-
-      provider.saveProfile(UserProfile(
-        age: _age,
-        heightCm: _heightCm,
-        biologicalSex: _biologicalSex,
-        activityLevel: _activityLevel,
-      ));
+      final messenger = ScaffoldMessenger.of(context);
 
       final currentWeightKg =
           _displayUnit.toKg(double.tryParse(_currentWeightCtrl.text) ?? 0);
@@ -91,21 +85,26 @@ class _ProfileGoalsScreenState extends State<ProfileGoalsScreen> {
           _displayUnit.toKg(double.tryParse(_targetWeightCtrl.text) ?? 0);
       final weeklyRateKg =
           _displayUnit.toKg(double.tryParse(_weeklyRateCtrl.text) ?? 0);
+      final shouldLogWeight = provider.latestWeightLog == null ||
+          provider.latestWeightLog!.weight != currentWeightKg;
 
+      Navigator.pop(context);
+
+      provider.saveProfile(UserProfile(
+        age: _age,
+        heightCm: _heightCm,
+        biologicalSex: _biologicalSex,
+        activityLevel: _activityLevel,
+      ));
       provider.saveGoal(Goal(
         targetWeightKg: targetWeightKg,
         weeklyChangeRateKg: weeklyRateKg,
       ));
+      if (shouldLogWeight) provider.logWeight(currentWeightKg);
 
-      if (provider.latestWeightLog == null ||
-          provider.latestWeightLog!.weight != currentWeightKg) {
-        provider.logWeight(currentWeightKg);
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(content: Text('Profile and Goals saved!')),
       );
-      Navigator.pop(context);
     }
   }
 
