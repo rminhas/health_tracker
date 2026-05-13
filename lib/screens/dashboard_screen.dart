@@ -21,12 +21,14 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final HealthService _healthService = HealthService();
   int _caloriesBurned = 0;
   bool _healthDataAvailable = false;
   bool _isLoadingHealth = true;
   List<WorkoutLog> _todayWorkouts = [];
+  late final TabController _tabController =
+      TabController(length: 2, vsync: this);
 
   @override
   void initState() {
@@ -38,6 +40,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -104,34 +107,37 @@ class _DashboardScreenState extends State<DashboardScreen>
           final targetCalories = profileProvider.targetCalories;
           final todayLogs = foodLogProvider.todayLogs;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (!_healthDataAvailable)
-                  _buildHealthConnectBanner(context),
-                _buildSummaryCard(
-                    context, foodLogProvider, netCalories, targetCalories),
-                const SizedBox(height: 16),
-                _buildSectionHeader("Today's Log"),
-                const SizedBox(height: 6),
-                if (todayLogs.isEmpty)
-                  _buildEmptyState('No food logged today.')
-                else
-                  ..._buildGroupedMeals(context, todayLogs),
-                const SizedBox(height: 8),
-                if (_healthDataAvailable) ...[
-                  _buildSectionLabel(
-                      context, Icons.directions_run, 'Exercise'),
-                  if (_todayWorkouts.isEmpty)
-                    _buildEmptyState('No workouts recorded today.')
-                  else
-                    ..._todayWorkouts
-                        .map((w) => _buildWorkoutCard(context, w)),
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (!_healthDataAvailable)
+                      _buildHealthConnectBanner(context),
+                    _buildSummaryCard(context, foodLogProvider, netCalories,
+                        targetCalories),
+                  ],
+                ),
+              ),
+              TabBar(
+                controller: _tabController,
+                tabs: const [
+                  Tab(icon: Icon(Icons.restaurant_menu), text: 'Food'),
+                  Tab(icon: Icon(Icons.directions_run), text: 'Exercise'),
                 ],
-              ],
-            ),
+              ),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildFoodTab(context, todayLogs),
+                    _buildExerciseTab(context),
+                  ],
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -163,6 +169,64 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ),
       ),
+    );
+  }
+
+  // ── Tab bodies ───────────────────────────────────────────────────────────
+
+  Widget _buildFoodTab(BuildContext context, List<FoodLog> todayLogs) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      children: [
+        if (todayLogs.isEmpty)
+          _buildEmptyState('No food logged today.')
+        else
+          ..._buildGroupedMeals(context, todayLogs),
+      ],
+    );
+  }
+
+  Widget _buildExerciseTab(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      children: [
+        Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                const Icon(Icons.local_fire_department, size: 28),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Active calories burned today',
+                          style: Theme.of(context).textTheme.bodyMedium),
+                      Text(_healthDataAvailable
+                          ? '$_caloriesBurned kcal'
+                          : '— (Health Connect not available)',
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        _buildSectionLabel(context, Icons.fitness_center, 'Workout sessions'),
+        if (_todayWorkouts.isEmpty)
+          _buildEmptyState(
+              'No workout sessions recorded today.\n'
+              'Only apps that write ExerciseSessionRecord to Health Connect '
+              'show up here.')
+        else
+          ..._todayWorkouts.map((w) => _buildWorkoutCard(context, w)),
+      ],
     );
   }
 
