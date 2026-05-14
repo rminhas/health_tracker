@@ -29,6 +29,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   List<WorkoutLog> _todayWorkouts = [];
   late final TabController _tabController =
       TabController(length: 2, vsync: this);
+  DateTime _selectedDate = _dateOnly(DateTime.now());
+
+  static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+  bool get _isViewingToday =>
+      _dateOnly(_selectedDate) == _dateOnly(DateTime.now());
 
   @override
   void initState() {
@@ -50,11 +55,15 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _loadHealthData() async {
+    final day = _selectedDate;
     final results = await Future.wait([
-      _healthService.getDailyActiveEnergyBurned(),
-      _healthService.getTodayWorkouts(),
+      _healthService.getActiveEnergyBurnedForDay(day),
+      _healthService.getWorkoutsForDay(day),
     ]);
     if (!mounted) return;
+    // Only apply the result if the user hasn't switched away to another day
+    // while this load was in flight.
+    if (_selectedDate != day) return;
     setState(() {
       final burned = results[0] as int?;
       _caloriesBurned = burned ?? 0;
@@ -62,6 +71,48 @@ class _DashboardScreenState extends State<DashboardScreen>
       _todayWorkouts = results[1] as List<WorkoutLog>;
       _isLoadingHealth = false;
     });
+  }
+
+  void _shiftDate(int days) {
+    final next = _dateOnly(_selectedDate.add(Duration(days: days)));
+    final today = _dateOnly(DateTime.now());
+    if (next.isAfter(today)) return;
+    setState(() {
+      _selectedDate = next;
+      _isLoadingHealth = true;
+    });
+    _loadHealthData();
+  }
+
+  Future<void> _pickDate() async {
+    final today = _dateOnly(DateTime.now());
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020, 1, 1),
+      lastDate: today,
+    );
+    if (picked == null || !mounted) return;
+    final normalized = _dateOnly(picked);
+    if (normalized == _selectedDate) return;
+    setState(() {
+      _selectedDate = normalized;
+      _isLoadingHealth = true;
+    });
+    _loadHealthData();
+  }
+
+  String _dateLabel(DateTime d) {
+    final today = _dateOnly(DateTime.now());
+    final diff = today.difference(_dateOnly(d)).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return '${weekdays[d.weekday - 1]}, ${months[d.month - 1]} ${d.day}';
   }
 
   Future<void> _connectAppleHealth() async {
@@ -102,10 +153,13 @@ class _DashboardScreenState extends State<DashboardScreen>
             return const Center(child: CircularProgressIndicator());
           }
 
-          final netCalories =
-              foodLogProvider.totalCalories - _caloriesBurned;
+          final dayLogs = foodLogProvider.logsForDay(_selectedDate);
+          final dayCalories = dayLogs.fold<int>(0, (s, l) => s + l.calories);
+          final dayProtein = dayLogs.fold<double>(0, (s, l) => s + l.protein);
+          final dayCarbs = dayLogs.fold<double>(0, (s, l) => s + l.carbs);
+          final dayFat = dayLogs.fold<double>(0, (s, l) => s + l.fat);
+          final netCalories = dayCalories - _caloriesBurned;
           final targetCalories = profileProvider.targetCalories;
-          final todayLogs = foodLogProvider.todayLogs;
 
           return Column(
             children: [
@@ -116,8 +170,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                   children: [
                     if (!_healthDataAvailable)
                       _buildHealthConnectBanner(context),
-                    _buildSummaryCard(context, foodLogProvider, netCalories,
-                        targetCalories),
+                    _buildDateNavigator(context),
+                    _buildSummaryCard(
+                      context,
+                      consumed: dayCalories,
+                      protein: dayProtein,
+                      carbs: dayCarbs,
+                      fat: dayFat,
+                      netCalories: netCalories,
+                      targetCalories: targetCalories,
+                    ),
                   ],
                 ),
               ),
@@ -132,7 +194,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 child: TabBarView(
                   controller: _tabController,
                   children: [
-                    _buildFoodTab(context, todayLogs),
+                    _buildFoodTab(context, dayLogs),
                     _buildExerciseTab(context),
                   ],
                 ),
@@ -172,16 +234,47 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  // ── Date navigator ───────────────────────────────────────────────────────
+
+  Widget _buildDateNavigator(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            tooltip: 'Previous day',
+            onPressed: () => _shiftDate(-1),
+            icon: const Icon(Icons.chevron_left),
+          ),
+          TextButton.icon(
+            onPressed: _pickDate,
+            icon: const Icon(Icons.calendar_today, size: 16),
+            label: Text(_dateLabel(_selectedDate),
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+          ),
+          IconButton(
+            tooltip: 'Next day',
+            onPressed: _isViewingToday ? null : () => _shiftDate(1),
+            icon: const Icon(Icons.chevron_right),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Tab bodies ───────────────────────────────────────────────────────────
 
-  Widget _buildFoodTab(BuildContext context, List<FoodLog> todayLogs) {
+  Widget _buildFoodTab(BuildContext context, List<FoodLog> dayLogs) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
       children: [
-        if (todayLogs.isEmpty)
-          _buildEmptyState('No food logged today.')
+        if (dayLogs.isEmpty)
+          _buildEmptyState(_isViewingToday
+              ? 'No food logged today.'
+              : 'No food logged on this day.')
         else
-          ..._buildGroupedMeals(context, todayLogs),
+          ..._buildGroupedMeals(context, dayLogs),
       ],
     );
   }
@@ -202,7 +295,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Active calories burned today',
+                      Text(
+                          'Active calories burned • '
+                          '${_dateLabel(_selectedDate).toLowerCase()}',
                           style: Theme.of(context).textTheme.bodyMedium),
                       Text(_healthDataAvailable
                           ? '$_caloriesBurned kcal'
@@ -220,10 +315,9 @@ class _DashboardScreenState extends State<DashboardScreen>
         ),
         _buildSectionLabel(context, Icons.fitness_center, 'Workout sessions'),
         if (_todayWorkouts.isEmpty)
-          _buildEmptyState(
-              'No workout sessions recorded today.\n'
-              'Only apps that write ExerciseSessionRecord to Health Connect '
-              'show up here.')
+          _buildEmptyState(_isViewingToday
+              ? 'No workout sessions recorded today.'
+              : 'No workout sessions recorded on this day.')
         else
           ..._todayWorkouts.map((w) => _buildWorkoutCard(context, w)),
       ],
@@ -568,9 +662,15 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   // ── Summary card ─────────────────────────────────────────────────────────
 
-  Widget _buildSummaryCard(BuildContext context, FoodLogProvider provider,
-      int netCalories, int targetCalories) {
-    final consumed = provider.totalCalories;
+  Widget _buildSummaryCard(
+    BuildContext context, {
+    required int consumed,
+    required double protein,
+    required double carbs,
+    required double fat,
+    required int netCalories,
+    required int targetCalories,
+  }) {
     final burned = consumed - netCalories; // calories burned via exercise
     final remaining = targetCalories - netCalories;
     final isOver = remaining < 0;
@@ -667,13 +767,13 @@ class _DashboardScreenState extends State<DashboardScreen>
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildMacroStat('Protein',
-                    provider.totalProtein.toStringAsFixed(1), 'g', Colors.red,
+                    protein.toStringAsFixed(1), 'g', Colors.red,
                     labelColor: mutedColor),
                 _buildMacroStat('Carbs',
-                    provider.totalCarbs.toStringAsFixed(1), 'g', Colors.blue,
+                    carbs.toStringAsFixed(1), 'g', Colors.blue,
                     labelColor: mutedColor),
                 _buildMacroStat('Fat',
-                    provider.totalFat.toStringAsFixed(1), 'g', Colors.amber,
+                    fat.toStringAsFixed(1), 'g', Colors.amber,
                     labelColor: mutedColor),
               ],
             ),
