@@ -38,10 +38,13 @@ class FoodLogProvider extends ChangeNotifier {
       if (key.isEmpty || seen.contains(key)) continue;
       seen.add(key);
       // Normalize back to per-100g so callers can scale by amount.
+      // Preserve the original amount as lastUsedAmount so the log dialog
+      // can pre-populate with the user's actual serving size.
       final scale = log.amount > 0 ? 100.0 / log.amount : 1.0;
       result.add(log.copyWith(
         id: null,
         amount: 100.0,
+        lastUsedAmount: log.amount,
         calories: (log.calories * scale).round(),
         protein: log.protein * scale,
         carbs: log.carbs * scale,

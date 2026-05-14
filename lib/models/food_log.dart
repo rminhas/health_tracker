@@ -10,6 +10,9 @@ class FoodLog {
   final DateTime date;
   final double amount;
   final MealType? mealType;
+  // Not persisted to DB — carries the last-used gram amount through distinctRecentFoods
+  // so the log dialog can pre-populate with the user's actual serving size.
+  final double? lastUsedAmount;
 
   FoodLog({
     this.id,
@@ -21,6 +24,7 @@ class FoodLog {
     required this.date,
     this.amount = 100.0,
     this.mealType,
+    this.lastUsedAmount,
   });
 
   // _Unset sentinel lets copyWith distinguish "pass null" from "omit argument".
@@ -36,6 +40,7 @@ class FoodLog {
     DateTime? date,
     double? amount,
     MealType? mealType,
+    Object? lastUsedAmount = _unset,
   }) =>
       FoodLog(
         id: id == _unset ? this.id : id as int?,
@@ -47,6 +52,7 @@ class FoodLog {
         date: date ?? this.date,
         amount: amount ?? this.amount,
         mealType: mealType ?? this.mealType,
+        lastUsedAmount: lastUsedAmount == _unset ? this.lastUsedAmount : lastUsedAmount as double?,
       );
 
   Map<String, dynamic> toJson() => {

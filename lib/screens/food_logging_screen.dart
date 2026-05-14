@@ -277,7 +277,11 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   }
 
   void _logFood(FoodLog food) {
-    final amountCtrl = TextEditingController(text: '100');
+    final lastUsed = food.lastUsedAmount;
+    final defaultAmountText = lastUsed != null
+        ? (lastUsed % 1 == 0 ? lastUsed.toInt().toString() : lastUsed.toStringAsFixed(1))
+        : '100';
+    final amountCtrl = TextEditingController(text: defaultAmountText);
     var selectedUnit = FoodUnit.g;
     var selectedMealType = food.mealType ?? MealType.suggest();
 
