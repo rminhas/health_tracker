@@ -118,17 +118,25 @@ class HealthService {
   /// Returns today's active energy burned in kcal, or `null` if we couldn't
   /// determine it (caller should treat null as "unknown" and show a Connect
   /// affordance rather than displaying 0 silently).
-  Future<int?> getDailyActiveEnergyBurned() async {
+  Future<int?> getDailyActiveEnergyBurned() =>
+      getActiveEnergyBurnedForDay(DateTime.now());
+
+  /// Returns active energy burned in kcal for [day]'s calendar day (local time).
+  /// Endpoint clamps to `now` for today so we don't query the future.
+  Future<int?> getActiveEnergyBurnedForDay(DateTime day) async {
     final now = DateTime.now();
-    final midnight = DateTime(now.year, now.month, now.day);
+    final start = DateTime(day.year, day.month, day.day);
+    final end = _isSameLocalDay(day, now)
+        ? now
+        : start.add(const Duration(days: 1));
 
     try {
       final ok = await _ensureAuthorized();
       if (!ok) return null;
 
       final healthData = await _health.getHealthDataFromTypes(
-        startTime: midnight,
-        endTime: now,
+        startTime: start,
+        endTime: end,
         types: const [HealthDataType.ACTIVE_ENERGY_BURNED],
       );
 
@@ -157,17 +165,24 @@ class HealthService {
 
   /// Returns today's workouts, sorted most-recent first.
   /// Returns an empty list if unavailable (not an error — caller can display nothing).
-  Future<List<WorkoutLog>> getTodayWorkouts() async {
+  Future<List<WorkoutLog>> getTodayWorkouts() =>
+      getWorkoutsForDay(DateTime.now());
+
+  /// Returns workouts for [day]'s calendar day (local time), sorted most-recent first.
+  Future<List<WorkoutLog>> getWorkoutsForDay(DateTime day) async {
     final now = DateTime.now();
-    final midnight = DateTime(now.year, now.month, now.day);
+    final start = DateTime(day.year, day.month, day.day);
+    final end = _isSameLocalDay(day, now)
+        ? now
+        : start.add(const Duration(days: 1));
 
     try {
       final ok = await _ensureAuthorized();
       if (!ok) return [];
 
       final healthData = await _health.getHealthDataFromTypes(
-        startTime: midnight,
-        endTime: now,
+        startTime: start,
+        endTime: end,
         types: const [HealthDataType.WORKOUT],
       );
 
@@ -191,6 +206,9 @@ class HealthService {
       return [];
     }
   }
+
+  bool _isSameLocalDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   Future<bool> writeWeight(double weightInKg) async {
     try {
