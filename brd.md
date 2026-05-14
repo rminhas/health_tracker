@@ -7,7 +7,7 @@ This app is intended for a person who wants to track their health metrics.
     - by scanning barcode
     - by searching in the database (results populate dynamically as the user types)
     - by entering the nutritional information manually
-    - by picking from previously logged foods
+    - by picking from previously logged foods; the amount field pre-populates with the last-used serving size for that food (e.g. if the user previously logged 60g, the dialog opens with 60g rather than the database default of 100g)
     - each food entry is assigned to a meal category: Breakfast, Lunch, Dinner, or Snack; the category is pre-selected based on the time of day but can be changed
     - the daily meals log on the dashboard groups entries by meal category in chronological order; legacy entries with no category appear under "Other"
     - ability to specify/change the amount of food being added
