@@ -5,10 +5,16 @@
     <!-- Activity Recognition: declared here AND requested at runtime in HealthService -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
 
-    <!-- Health Connect permissions matching the types used in HealthService:
-         ACTIVE_ENERGY_BURNED, WORKOUT (read), WEIGHT (read + write) -->
+    <!-- Health Connect permissions matching the types used in HealthService.
+         The cachet health plugin's WORKOUT handler also queries DistanceRecord,
+         StepsRecord, and TotalCaloriesBurnedRecord to enrich each session, so
+         those READ permissions are required too or the workout query throws
+         SecurityException and returns empty. -->
     <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED"/>
     <uses-permission android:name="android.permission.health.READ_EXERCISE"/>
+    <uses-permission android:name="android.permission.health.READ_DISTANCE"/>
+    <uses-permission android:name="android.permission.health.READ_STEPS"/>
+    <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED"/>
     <uses-permission android:name="android.permission.health.READ_WEIGHT"/>
     <uses-permission android:name="android.permission.health.WRITE_WEIGHT"/>
 
