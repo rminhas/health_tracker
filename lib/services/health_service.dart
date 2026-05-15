@@ -37,17 +37,28 @@ class HealthService {
 
   HealthStatus get status => _status;
 
+  // Order matters: _permissions[i] is the access level for _types[i].
+  //
+  // DISTANCE_DELTA, STEPS, and TOTAL_CALORIES_BURNED aren't displayed by us
+  // directly — they're required because the cachet health plugin's WORKOUT
+  // handler queries those record types under the hood to enrich each session
+  // with distance / steps / calories. Without their READ permissions, the
+  // whole workout fetch throws SecurityException and returns nothing.
   static const List<HealthDataType> _types = [
     HealthDataType.ACTIVE_ENERGY_BURNED,
     HealthDataType.WEIGHT,
     HealthDataType.WORKOUT,
+    HealthDataType.DISTANCE_DELTA,
+    HealthDataType.STEPS,
+    HealthDataType.TOTAL_CALORIES_BURNED,
   ];
 
-  // ACTIVE_ENERGY_BURNED and WORKOUT are read-only;
-  // WEIGHT is read+write so we can sync weight logs back to Apple Health.
   static const List<HealthDataAccess> _permissions = [
     HealthDataAccess.READ,
-    HealthDataAccess.READ_WRITE,
+    HealthDataAccess.READ_WRITE, // WEIGHT — we sync weight logs back
+    HealthDataAccess.READ,
+    HealthDataAccess.READ,
+    HealthDataAccess.READ,
     HealthDataAccess.READ,
   ];
 
@@ -87,6 +98,20 @@ class HealthService {
         // Health Connect on Android also needs activity recognition for
         // step / energy data on many devices.
         await Permission.activityRecognition.request();
+      }
+
+      // Skip requestAuthorization when permissions are already granted. The
+      // Health Connect permission contract has been observed to hang and never
+      // fire its result callback when there's nothing to grant, leaving the
+      // request Future unresolved forever and starving all data reads.
+      final alreadyGranted = await _health.hasPermissions(
+        _types,
+        permissions: _permissions,
+      ) ?? false;
+      if (alreadyGranted) {
+        _status = HealthStatus.connected;
+        lastError = '';
+        return true;
       }
 
       final ok = await _health.requestAuthorization(_types, permissions: _permissions);
@@ -191,7 +216,19 @@ class HealthService {
         final value = data.value;
         if (value is! WorkoutHealthValue) continue;
         final duration = data.dateTo.difference(data.dateFrom).inMinutes;
-        final calories = value.totalEnergyBurned?.toInt() ?? 0;
+        // The cachet health plugin sets totalEnergyBurned by summing
+        // *all* TotalCaloriesBurnedRecord entries overlapping the workout
+        // window — which mixes in basal contributions from other sources
+        // (e.g. Pixel Fit) and inflates the number. Recompute by querying
+        // calorie records and keeping only those whose data origin matches
+        // the workout itself (e.g. Strava's own records).
+        final calories = await _caloriesForWorkout(
+              data.dateFrom,
+              data.dateTo,
+              data.sourceName,
+            ) ??
+            value.totalEnergyBurned?.toInt() ??
+            0;
         workouts.add(WorkoutLog(
           activityType: value.workoutActivityType.name,
           durationMinutes: duration,
@@ -199,8 +236,9 @@ class HealthService {
           startTime: data.dateFrom,
         ));
       }
-      workouts.sort((a, b) => b.startTime.compareTo(a.startTime));
-      return workouts;
+      final deduped = _dedupOverlappingWorkouts(workouts);
+      deduped.sort((a, b) => b.startTime.compareTo(a.startTime));
+      return deduped;
     } catch (e) {
       lastError = 'getWorkouts: $e';
       return [];
@@ -209,6 +247,95 @@ class HealthService {
 
   bool _isSameLocalDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// Collapses ExerciseSessionRecord entries that describe the same physical
+  /// workout. Common case: a watch app (Zepp / Fitbit / Garmin) logs the run,
+  /// then Strava syncs from it and writes its own record — Health Connect
+  /// then has two sessions for the same run with slightly different start
+  /// times, and summing their calories double-counts.
+  ///
+  /// Two sessions are considered duplicates when their time ranges overlap
+  /// by at least half of the shorter session's duration. The one with the
+  /// higher calorie value wins (most detailed source).
+  List<WorkoutLog> _dedupOverlappingWorkouts(List<WorkoutLog> input) {
+    final sorted = [...input]
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    final result = <WorkoutLog>[];
+    for (final w in sorted) {
+      final wEnd = w.startTime.add(Duration(minutes: w.durationMinutes));
+      var merged = false;
+      for (var i = 0; i < result.length; i++) {
+        final k = result[i];
+        final kEnd = k.startTime.add(Duration(minutes: k.durationMinutes));
+        final overlapStart =
+            w.startTime.isAfter(k.startTime) ? w.startTime : k.startTime;
+        final overlapEnd = wEnd.isBefore(kEnd) ? wEnd : kEnd;
+        if (!overlapStart.isBefore(overlapEnd)) continue;
+        final overlap = overlapEnd.difference(overlapStart).inMinutes;
+        final shorter = w.durationMinutes < k.durationMinutes
+            ? w.durationMinutes
+            : k.durationMinutes;
+        if (shorter > 0 && overlap * 2 >= shorter) {
+          if (w.caloriesBurned > k.caloriesBurned) result[i] = w;
+          merged = true;
+          break;
+        }
+      }
+      if (!merged) result.add(w);
+    }
+    return result;
+  }
+
+  /// Sums calorie records overlapping [start]..[end] whose source matches
+  /// [workoutSourceName] (e.g. Strava's package name). Tries
+  /// ACTIVE_ENERGY_BURNED first (closest to what fitness apps report as
+  /// "calories"), then TOTAL_CALORIES_BURNED, then null if neither has
+  /// anything from that source.
+  Future<int?> _caloriesForWorkout(
+    DateTime start,
+    DateTime end,
+    String workoutSourceName,
+  ) async {
+    final probeOrder = [
+      HealthDataType.ACTIVE_ENERGY_BURNED,
+      HealthDataType.TOTAL_CALORIES_BURNED,
+    ];
+    for (final type in probeOrder) {
+      final value = await _sumNumericFromSource(
+        start: start,
+        end: end,
+        type: type,
+        sourceName: workoutSourceName,
+      );
+      if (value != null && value > 0) return value;
+    }
+    return null;
+  }
+
+  Future<int?> _sumNumericFromSource({
+    required DateTime start,
+    required DateTime end,
+    required HealthDataType type,
+    required String sourceName,
+  }) async {
+    try {
+      final pts = await _health.getHealthDataFromTypes(
+        startTime: start,
+        endTime: end,
+        types: [type],
+      );
+      double total = 0;
+      for (final d in pts) {
+        if (d.sourceName != sourceName) continue;
+        final v = d.value;
+        if (v is! NumericHealthValue) continue;
+        total += v.numericValue.toDouble();
+      }
+      return total.round();
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<bool> writeWeight(double weightInKg) async {
     try {
