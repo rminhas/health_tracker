@@ -7,7 +7,9 @@ import '../providers/profile_provider.dart';
 import '../services/health_service.dart';
 import 'analytics_screen.dart';
 import 'exercise_day_screen.dart';
+import 'export_screen.dart';
 import 'food_day_screen.dart';
+import 'food_logging_screen.dart';
 import 'profile_goals_screen.dart';
 import 'widgets/date_navigator.dart';
 
@@ -104,6 +106,26 @@ class _DashboardScreenState extends State<DashboardScreen>
                 MaterialPageRoute(
                     builder: (_) => const ProfileGoalsScreen())),
           ),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'export') {
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const ExportScreen()));
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'export',
+                child: ListTile(
+                  leading: Icon(Icons.ios_share),
+                  title: Text('Export data'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: Consumer2<FoodLogProvider, ProfileProvider>(
@@ -151,10 +173,28 @@ class _DashboardScreenState extends State<DashboardScreen>
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: OutlinedButton.icon(
-            onPressed: () => _showWeightLogDialog(context),
-            icon: const Icon(Icons.scale, size: 18),
-            label: const Text('Log Weight'),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _showWeightLogDialog(context),
+                  icon: const Icon(Icons.scale, size: 18),
+                  label: const Text('Log Weight'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const FoodLoggingScreen()),
+                  ),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Log Food'),
+                ),
+              ),
+            ],
           ),
         ),
       ),

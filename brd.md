@@ -14,6 +14,9 @@ This app is intended for a person who wants to track their health metrics.
         - unit of the amount can be changed between g, oz, lbs, ml, and cups; the amount is converted to grams internally before saving
         - volume units (ml, cups) display a note that conversion assumes a density of 1 g/ml and is most accurate for liquids
     - ability to edit the amount of food ingested in a log entry after it has been made, with the same unit picker (g, oz, lbs, ml, cups) available during logging
+    - ability to delete a food log entry (e.g. to undo a mistaken entry)
+        - delete is triggered by swiping the entry on the Food day screen, which opens a confirmation dialog before removal
+        - after deletion a SnackBar appears with an "Undo" action (5-second window) that restores the entry in place, protecting against accidental taps
 - Automatically import exercise data from Apple Health and Google Fit
     - individual workout activities (e.g. cycling 20 min, walking 10 min) are shown in a dedicated Exercise section below the daily meals log
 - Log their weight via a quick-access button, which automatically syncs to Apple Health (iOS) and Health Connect (Android)
@@ -37,6 +40,14 @@ This app is intended for a person who wants to track their health metrics.
     - pie chart or bar chart showing the split of calories from fat, protein, and carbohydrates
     - stacked bar chart showing daily macronutrient breakdown over the last 7 days
 - View their health metrics in a weekly/monthly report
+- Export daily health data for use outside the app (e.g. spreadsheets, sharing with a coach, personal backup)
+    - exposed via an "Export data" item in the dashboard's overflow menu
+    - the user picks a date range: Today, Last 7 days, Last 30 days, All time, or a Custom range
+    - export produces two CSV files in a single share action:
+        - `daily_summary.csv` — one row per day with: date, weight, calories consumed, active calories burned, total calories burned (BMR + active), calorie target, end-of-day calorie deficit/surplus, food entry count, workout count, and total protein/carbs/fat in grams
+        - `detail.csv` — one row per individual entry with: date, type (food or workout), name, meal category, amount in grams, calories, protein/carbs/fat in grams, and workout duration in minutes
+    - the files are handed to the OS share sheet so the user can route them to email, Files, Drive, AirDrop, etc.; no extra permissions are required
+    - workout history depth is bounded by what HealthKit / Health Connect exposes for the chosen range
 - Automatically infer the nutritional information of food from public databases like NCCDB
     - the food data should be stored locally and should be updated periodically
     - search results are cached locally in SQLite (keyed by query, 24-hour TTL) so the app works without internet and repeat searches are instant; stale entries are pruned automatically

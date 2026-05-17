@@ -163,6 +163,23 @@ class _FoodDayScreenState extends State<FoodDayScreen> {
     );
   }
 
+  Future<void> _deleteWithUndo(BuildContext context, FoodLog log) async {
+    final provider = context.read<FoodLogProvider>();
+    final messenger = ScaffoldMessenger.of(context);
+    await provider.deleteLog(log);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Deleted ${log.name}'),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => provider.restoreLog(log),
+        ),
+      ),
+    );
+  }
+
   Widget _mealCard(BuildContext context, FoodLog log) {
     return Dismissible(
       key: ValueKey(log.id),
@@ -200,7 +217,7 @@ class _FoodDayScreenState extends State<FoodDayScreen> {
             ) ??
             false;
       },
-      onDismissed: (_) => context.read<FoodLogProvider>().deleteLog(log),
+      onDismissed: (_) => _deleteWithUndo(context, log),
       child: Card(
         margin: const EdgeInsets.only(bottom: 4),
         child: ListTile(

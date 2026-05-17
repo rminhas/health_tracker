@@ -99,4 +99,18 @@ class FoodLogProvider extends ChangeNotifier {
     _foodLogs.removeWhere((l) => l.id == log.id);
     notifyListeners();
   }
+
+  /// Re-creates a previously deleted [log] in the database. Used to power the
+  /// "Undo" affordance shown after a swipe-delete: SQLite will assign a fresh
+  /// auto-increment id, but the user-visible fields (name, amount, date,
+  /// nutrition, meal type) are preserved exactly.
+  Future<FoodLog> restoreLog(FoodLog log) async {
+    final restored = await DatabaseHelper.instance.createFoodLog(
+      log.copyWith(id: null),
+    );
+    _foodLogs.insert(0, restored);
+    _foodLogs.sort((a, b) => b.date.compareTo(a.date));
+    notifyListeners();
+    return restored;
+  }
 }
