@@ -5,9 +5,9 @@ import 'package:provider/provider.dart';
 import '../providers/food_log_provider.dart';
 import '../services/food_data_api.dart';
 import '../models/food_log.dart';
-import '../models/food_unit.dart';
 import '../models/meal_type.dart';
 import 'barcode_scanner_screen.dart';
+import 'widgets/food_log_dialog.dart';
 
 class FoodLoggingScreen extends StatefulWidget {
   const FoodLoggingScreen({super.key});
@@ -277,122 +277,7 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   }
 
   void _logFood(FoodLog food) {
-    final lastUsed = food.lastUsedAmount;
-    final defaultAmountText = lastUsed != null
-        ? (lastUsed % 1 == 0 ? lastUsed.toInt().toString() : lastUsed.toStringAsFixed(1))
-        : '100';
-    final amountCtrl = TextEditingController(text: defaultAmountText);
-    var selectedUnit = FoodUnit.g;
-    var selectedMealType = food.mealType ?? MealType.suggest();
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          final amt = double.tryParse(amountCtrl.text) ?? 0.0;
-          final valid = amt > 0;
-          final gramsEquivalent = amt * selectedUnit.toGrams;
-          final ratio = valid ? gramsEquivalent / 100.0 : 0.0;
-
-          return AlertDialog(
-            title: Text('Add ${food.name}'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Per 100g: ${food.calories} kcal  ·  P ${food.protein.toStringAsFixed(1)}g  ·  C ${food.carbs.toStringAsFixed(1)}g  ·  F ${food.fat.toStringAsFixed(1)}g',
-                    style: Theme.of(ctx).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 12),
-                  Text('Meal', style: Theme.of(ctx).textTheme.labelMedium),
-                  const SizedBox(height: 6),
-                  _buildMealTypePicker(selectedMealType,
-                      (t) => setDialogState(() => selectedMealType = t)),
-                  const SizedBox(height: 12),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: amountCtrl,
-                          decoration: InputDecoration(
-                            labelText: 'Amount (${selectedUnit.label})',
-                            border: const OutlineInputBorder(),
-                          ),
-                          keyboardType: TextInputType.number,
-                          autofocus: true,
-                          onChanged: (_) => setDialogState(() {}),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      DropdownButton<FoodUnit>(
-                        value: selectedUnit,
-                        underline: const SizedBox(),
-                        items: FoodUnit.values
-                            .map((u) => DropdownMenuItem(
-                                  value: u,
-                                  child: Text(u.label),
-                                ))
-                            .toList(),
-                        onChanged: (u) {
-                          if (u != null) setDialogState(() => selectedUnit = u);
-                        },
-                      ),
-                    ],
-                  ),
-                  if (selectedUnit.isVolume) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'Volume units assume density ≈ 1 g/ml (accurate for liquids).',
-                      style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                            fontStyle: FontStyle.italic,
-                          ),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  if (valid)
-                    Text(
-                      'At ${amt.toStringAsFixed(0)} ${selectedUnit.label}: ${(food.calories * ratio).round()} kcal  ·  P ${(food.protein * ratio).toStringAsFixed(1)}g  ·  C ${(food.carbs * ratio).toStringAsFixed(1)}g  ·  F ${(food.fat * ratio).toStringAsFixed(1)}g',
-                      style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: valid
-                    ? () {
-                        final adjustedFood = food.copyWith(
-                          amount: gramsEquivalent,
-                          calories: (food.calories * ratio).round(),
-                          protein: food.protein * ratio,
-                          carbs: food.carbs * ratio,
-                          fat: food.fat * ratio,
-                          mealType: selectedMealType,
-                        );
-                        final provider = context.read<FoodLogProvider>();
-                        final messenger = ScaffoldMessenger.of(context);
-                        Navigator.pop(dialogContext);
-                        Navigator.pop(context);
-                        provider.addLog(adjustedFood);
-                        messenger.showSnackBar(
-                          SnackBar(content: Text('Logged ${adjustedFood.name}')),
-                        );
-                      }
-                    : null,
-                child: const Text('Log Food'),
-              ),
-            ],
-          );
-        },
-      ),
-    ).whenComplete(amountCtrl.dispose);
+    showFoodLogDialog(context: context, perHundredGrams: food);
   }
 
   Widget _buildMealTypePicker(MealType selected, ValueChanged<MealType> onChanged) {

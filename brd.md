@@ -13,7 +13,9 @@ This app is intended for a person who wants to track their health metrics.
     - ability to specify/change the amount of food being added
         - unit of the amount can be changed between g, oz, lbs, ml, and cups; the amount is converted to grams internally before saving
         - volume units (ml, cups) display a note that conversion assumes a density of 1 g/ml and is most accurate for liquids
-    - ability to edit the amount of food ingested in a log entry after it has been made, with the same unit picker (g, oz, lbs, ml, cups) available during logging
+    - ability to edit a food log entry after it has been made
+        - tapping an entry in the daily log opens the same dialog used to create it (pre-populated with the current amount, unit, and meal category)
+        - the user can change the amount (with the same g / oz / lbs / ml / cups unit picker available during logging), switch the meal category (Breakfast / Lunch / Dinner / Snack), and the nutrition totals on the entry are recomputed on save; the entry's original date/time is preserved so it stays on the same day
     - ability to delete a food log entry (e.g. to undo a mistaken entry)
         - delete is triggered by swiping the entry on the Food day screen, which opens a confirmation dialog before removal
         - after deletion a SnackBar appears with an "Undo" action (5-second window) that restores the entry in place, protecting against accidental taps

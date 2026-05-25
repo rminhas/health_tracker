@@ -5,6 +5,7 @@ import '../models/meal_type.dart';
 import '../providers/food_log_provider.dart';
 import 'food_logging_screen.dart';
 import 'widgets/date_navigator.dart';
+import 'widgets/food_log_dialog.dart';
 
 class FoodDayScreen extends StatefulWidget {
   const FoodDayScreen({super.key, required this.initialDate});
@@ -163,6 +164,27 @@ class _FoodDayScreenState extends State<FoodDayScreen> {
     );
   }
 
+  /// Opens the shared food dialog in edit mode. Reconstructs the per-100g
+  /// baseline from the stored (already scaled) entry so the dialog can do its
+  /// usual amount-driven scaling math.
+  void _editLog(BuildContext context, FoodLog log) {
+    if (log.amount <= 0) return;
+    final scale = 100.0 / log.amount;
+    final per100g = log.copyWith(
+      id: null,
+      amount: 100,
+      calories: (log.calories * scale).round(),
+      protein: log.protein * scale,
+      carbs: log.carbs * scale,
+      fat: log.fat * scale,
+    );
+    showFoodLogDialog(
+      context: context,
+      perHundredGrams: per100g,
+      existing: log,
+    );
+  }
+
   Future<void> _deleteWithUndo(BuildContext context, FoodLog log) async {
     final provider = context.read<FoodLogProvider>();
     final messenger = ScaffoldMessenger.of(context);
@@ -222,6 +244,7 @@ class _FoodDayScreenState extends State<FoodDayScreen> {
         margin: const EdgeInsets.only(bottom: 4),
         child: ListTile(
           dense: true,
+          onTap: () => _editLog(context, log),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
           leading: const Icon(Icons.restaurant_menu, size: 20),
